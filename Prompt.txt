@@ -1,0 +1,671 @@
+Ringkasan Proyek — Bakery Cost Calculator (AI Handover)
+
+Status saat ini: Belum ada implementasi kode. Seluruh pekerjaan yang telah dilakukan adalah tahap analisis, perancangan arsitektur, dan spesifikasi aplikasi. Belum ada repository, belum ada file source code, dan belum ada UI yang dibuat.
+
+1. Deskripsi Singkat Proyek
+Nama Proyek
+
+Bakery Cost Calculator
+
+Tujuan
+
+Membangun aplikasi web pribadi (single-user) untuk menghitung Harga Pokok Produksi (HPP) dan Harga Jual berbagai resep bakery secara otomatis.
+
+Aplikasi harus mampu:
+
+Mengelola master data bahan baku.
+Menghitung harga per gram/ml otomatis dari harga beli.
+Membuat resep yang terdiri dari banyak bahan.
+Mendukung Sub Recipe (misalnya Ganache, Buttercream, dll.).
+Menghitung HPP per batch dan per pcs.
+Menghitung harga jual berdasarkan margin/markup.
+Simulasi keuntungan.
+Menyimpan riwayat harga bahan.
+Menyimpan versi resep.
+Backup & Restore.
+Export PDF.
+Berjalan sebagai PWA.
+Sinkron otomatis antar laptop dan iPhone menggunakan Firebase.
+Cara Kerja Aplikasi
+
+Workflow utama:
+
+Dashboard
+        │
+        ▼
+Tambah Master Data
+        │
+        ▼
+Tambah Ingredient
+        │
+        ▼
+Tambah Recipe
+        │
+        ▼
+Calculation Engine
+        │
+        ▼
+HPP
+        │
+        ▼
+Selling Price
+        │
+        ▼
+Export PDF / Backup
+
+Semua perhitungan dilakukan melalui Calculation Engine.
+
+Business Logic tidak boleh berada di Component React.
+
+2. Teknologi & Library (Stack)
+Frontend
+React 19
+TypeScript
+Vite
+Styling
+Tailwind CSS v4
+shadcn/ui
+Icons
+Lucide React
+Backend
+
+Tidak menggunakan backend custom.
+
+Menggunakan Firebase.
+
+Firestore
+Firebase Storage
+Firebase Hosting
+Firebase Anonymous Authentication
+Data
+TanStack Query
+React Hook Form
+React Context
+Validation
+Zod
+Money Calculation
+Decimal.js
+
+WAJIB
+
+Semua perhitungan uang menggunakan Decimal.js.
+
+Date
+Day.js
+Table
+TanStack Table
+Search
+Fuse.js
+Charts
+
+Menggunakan:
+
+Recharts
+
+(Bukan Chart.js)
+
+PDF
+
+Menggunakan:
+
+@react-pdf/renderer
+
+(Bukan jsPDF)
+
+Drag & Drop
+React DnD
+Crop Thumbnail
+React Crop
+Virtual Table
+TanStack Virtual
+PWA
+vite-plugin-pwa
+Testing
+Vitest
+Development
+ESLint
+Prettier
+Husky
+3. Struktur Direktori
+Root
+bakery-costing/
+│
+├── apps/
+│   └── web/
+│
+├── packages/
+│   ├── calculation-engine/
+│   ├── ui/
+│   ├── firebase/
+│   ├── shared-types/
+│   └── utils/
+│
+├── docs/
+│
+├── prompts/
+│
+└── package.json
+React App
+src/
+│
+├── app
+├── assets
+├── components
+│
+├── features
+│
+├── engine
+│
+├── repositories
+│
+├── hooks
+│
+├── contexts
+│
+├── firebase
+│
+├── lib
+│
+├── routes
+│
+├── schemas
+│
+├── services
+│
+├── types
+│
+└── utils
+4. Fitur yang Sudah Selesai
+Belum ada implementasi kode.
+
+Yang sudah selesai hanyalah:
+
+Analisis kebutuhan
+
+✅
+
+PRD
+
+✅
+
+Database Design
+
+Firestore selesai dirancang.
+
+Collection:
+
+ingredients
+ingredient_categories
+suppliers
+recipes
+recipe_items
+sub_recipes
+sub_recipe_items
+tags
+settings
+units
+recipe_versions
+price_histories
+overheads
+UI Design
+
+Selesai.
+
+Dashboard Admin Style.
+
+Inspirasi:
+
+Linear
+Stripe
+Vercel
+Notion
+Business Logic
+
+Selesai.
+
+Calculation Engine telah dirancang.
+
+Software Architecture
+
+Selesai.
+
+Repository Pattern.
+
+Engine Layer.
+
+Feature First.
+
+Infrastructure
+
+Selesai.
+
+Firebase.
+
+Offline.
+
+PWA.
+
+Deployment.
+
+Coding Standards
+
+Selesai.
+
+5. Kode Sumber Utama (Context)
+Belum ada source code.
+
+Belum terdapat:
+
+package.json
+vite.config.ts
+firebase.ts
+App.tsx
+routes
+components
+
+Semua masih berupa spesifikasi.
+
+Firestore Collections
+ingredients
+ingredient_categories
+recipe_categories
+recipes
+recipe_items
+sub_recipes
+sub_recipe_items
+suppliers
+tags
+units
+price_histories
+recipe_versions
+settings
+overheads
+Architecture
+Presentation
+      │
+      ▼
+Features
+      │
+      ▼
+Engine
+      │
+      ▼
+Repository
+      │
+      ▼
+Firestore
+Folder penting
+engine/
+
+Berisi:
+
+calculationEngine
+pricingEngine
+conversionEngine
+recipeEngine
+roundingEngine
+backupEngine
+notificationEngine
+Repository
+repositories/
+
+Misalnya:
+
+IngredientRepository
+
+RecipeRepository
+
+SupplierRepository
+
+SettingsRepository
+
+6. Tugas Berikutnya & Masalah/Bug Aktif
+Status
+
+Belum mulai coding.
+
+Langkah pertama
+
+AI harus membuat:
+
+Project Setup.
+
+Menggunakan:
+
+React
+Vite
+TS
+Tailwind
+Firebase
+shadcn
+
+Setelah itu:
+
+Master Data
+
+↓
+
+Ingredient
+
+↓
+
+Recipe
+
+↓
+
+Calculation Engine
+
+↓
+
+Dashboard
+
+↓
+
+Calculator
+
+↓
+
+Backup
+
+↓
+
+Deployment
+
+Development Order
+
+Project Setup
+
+Design System
+
+Firebase Layer
+
+Calculation Engine
+
+Master Data
+
+Recipe Module
+
+Dashboard
+
+Calculator
+
+Backup
+
+Settings
+
+Optimization
+
+Testing
+
+Deployment
+
+Bug
+
+Belum ada.
+
+Karena belum ada kode.
+
+7. Panduan Desain & Aturan Kode
+Design
+
+Tema:
+
+Modern
+
+Minimalis
+
+Dashboard Admin
+
+Professional
+
+Inspirasi
+
+Linear
+Vercel
+Stripe
+Notion
+Color
+
+Primary
+
+#111827
+
+Background
+
+#F9FAFB
+
+Card
+
+#FFFFFF
+
+Border
+
+#E5E7EB
+
+Success
+
+#22C55E
+
+Danger
+
+#EF4444
+
+Warning
+
+#F59E0B
+
+Info
+
+#3B82F6
+Font
+
+Inter
+
+Border Radius
+
+Card
+
+rounded-xl
+
+Input
+
+rounded-lg
+
+Dialog
+
+rounded-2xl
+
+Animation
+
+200 ms
+
+Fade
+
+Scale
+
+Slide
+
+Layout
+
+Desktop
+
+Sidebar
+
+Navbar
+
+Dashboard
+
+Tablet
+
+Sidebar Collapse
+
+Mobile
+
+Bottom Navigation
+
+FAB
+
+Coding Rules
+Wajib
+TypeScript Strict
+Tidak boleh menggunakan any
+Repository Pattern
+Business Logic di Engine
+React Component hanya UI
+Gunakan React Hook Form
+Gunakan TanStack Query
+Gunakan Decimal.js untuk uang
+Gunakan Zod
+Gunakan Feature First Architecture
+Gunakan Absolute Import
+Functional Component
+Arrow Function
+Early Return
+Composition over Inheritance
+Dilarang
+Business Logic di Component
+Query Firestore langsung dari UI
+Hardcode
+Duplicate Logic
+Placeholder Logic
+Dummy Data tersisa
+Relative import bertingkat (../../../../)
+Naming
+
+Component
+
+PascalCase
+
+Contoh:
+
+RecipeCard
+
+Function
+
+camelCase
+
+calculateRecipeCost()
+
+File
+
+kebab-case
+
+recipe-card.tsx
+Acceptance Criteria
+
+Setiap feature dianggap selesai jika:
+
+UI selesai
+Repository selesai
+Engine selesai
+Validation selesai
+Unit Test selesai
+Responsive
+Loading State
+Empty State
+Error State
+Firestore terhubung
+Offline berjalan
+Keputusan Arsitektur Penting
+Single User
+
+Tidak ada login manual.
+
+Menggunakan:
+
+Firebase Anonymous Authentication.
+
+Database
+
+Firestore.
+
+Storage
+
+Firebase Storage.
+
+Hosting
+
+Firebase Hosting.
+
+Offline
+
+Harus menggunakan Firestore Offline Cache.
+
+PWA
+
+Wajib.
+
+Search
+
+Fuse.js.
+
+Table
+
+TanStack Table.
+
+PDF
+
+React PDF.
+
+Calculation
+
+Menggunakan satu Calculation Engine.
+
+Tidak boleh ada rumus di Component.
+
+Sub Recipe
+
+Mendukung recursive recipe.
+
+Harus mendeteksi circular dependency.
+
+Contoh yang harus ditolak:
+
+Cake
+ ↓
+Buttercream
+ ↓
+Cake
+Harga Ingredient
+
+Setiap perubahan harga ingredient harus otomatis:
+
+Update Price History.
+Hitung ulang semua recipe terkait.
+Update cachedCost.
+Update cachedSellingPrice.
+Update Dashboard.
+Backup
+
+Format JSON.
+
+Export.
+
+Import.
+
+Validation.
+
+Status Proyek Saat Ini
+Bagian	Status
+Analisis kebutuhan	✅ Selesai
+PRD	✅ Selesai
+UI/UX Design	✅ Selesai
+Database Design	✅ Selesai
+Business Logic	✅ Selesai
+Software Architecture	✅ Selesai
+Infrastructure	✅ Selesai
+Coding Standards	✅ Selesai
+Source Code	❌ Belum dimulai
+React Project	❌ Belum dibuat
+Firebase Project	❌ Belum dibuat
+Deployment	❌ Belum dilakukan
+Rekomendasi untuk AI Berikutnya
+
+AI berikutnya tidak perlu mengulang proses desain. Seluruh keputusan arsitektur sudah dianggap final, kecuali ada alasan teknis yang kuat.
+
+Prioritas pekerjaan adalah:
+
+Membuat repository Git.
+Melakukan Project Setup sesuai stack yang telah ditentukan.
+Mengimplementasikan aplikasi mengikuti urutan pengembangan yang sudah disepakati (Feature First Development).
+Menjaga seluruh business logic tetap berada di Engine Layer dan seluruh akses Firestore melalui Repository Pattern.
