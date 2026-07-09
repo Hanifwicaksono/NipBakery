@@ -19,8 +19,7 @@ import {
 import Fuse from 'fuse.js'
 
 import { getAI, getGenerativeModel, GoogleAIBackend } from 'firebase/ai'
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
-import { app, storage, auth } from '@/firebase/config'
+import { app } from '@/firebase/config'
 
 import { RecipeRepository } from '@/repositories/recipe.repository'
 import { RecipeCategoryRepository } from '@/repositories/recipe-category.repository'
@@ -291,28 +290,63 @@ PENTING:
     }
   }
 
+  // Helper to compress and convert image to base64 Data URL (max 300px width/height, 0.7 quality)
+  const compressAndConvertToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = document.createElement('img');
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const max_width = 300;
+          const max_height = 300;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > max_width) {
+              height = Math.round((height * max_width) / width);
+              width = max_width;
+            }
+          } else {
+            if (height > max_height) {
+              width = Math.round((width * max_height) / height);
+              height = max_height;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+            resolve(dataUrl);
+          } else {
+            resolve(event.target?.result as string);
+          }
+        };
+        img.onerror = (err) => reject(err);
+      };
+      reader.onerror = (err) => reject(err);
+    });
+  }
+
   // Thumbnail upload & remove handlers
   const handleThumbnailChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    const userId = auth.currentUser?.uid
-    if (!userId) {
-      alert('Anda harus login terlebih dahulu.')
-      return
-    }
-
     setIsUploadingThumbnail(true)
     try {
-      const storageRef = ref(storage, `users/${userId}/recipes/${recipeIdRef.current}/thumbnail`)
-      const snapshot = await uploadBytes(storageRef, file)
-      const downloadURL = await getDownloadURL(snapshot.ref)
-      
-      setValue('imageStoragePath', downloadURL)
-      setThumbnailPreview(downloadURL)
+      const base64DataUrl = await compressAndConvertToBase64(file)
+      setValue('imageStoragePath', base64DataUrl)
+      setThumbnailPreview(base64DataUrl)
     } catch (error: any) {
-      console.error('Gagal mengunggah thumbnail:', error)
-      alert(`Gagal mengunggah thumbnail: ${error.message}`)
+      console.error('Gagal memproses thumbnail:', error)
+      alert(`Gagal memproses thumbnail: ${error.message}`)
     } finally {
       setIsUploadingThumbnail(false)
     }
