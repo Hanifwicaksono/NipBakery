@@ -14,9 +14,7 @@ import {
   HelpCircle,
   Upload,
   ImageOff,
-  Image,
-  Video,
-  ExternalLink
+  Image
 } from 'lucide-react'
 import Fuse from 'fuse.js'
 
