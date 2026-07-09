@@ -153,7 +153,7 @@ export const RecipeForm: React.FC<RecipeFormProps> = ({ recipe, onClose }) => {
     try {
       const ai = getAI(app, { backend: new GoogleAIBackend() })
       const model = getGenerativeModel(ai, {
-        model: 'gemini-3.5-flash',
+        model: 'gemini-2.5-flash',
         generationConfig: {
           responseMimeType: 'application/json',
         },
