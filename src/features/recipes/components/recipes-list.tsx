@@ -9,7 +9,8 @@ import {
   Search, 
   ChefHat, 
   Layers,
-  Percent
+  Percent,
+  ExternalLink
 } from 'lucide-react'
 import { RecipeRepository } from '@/repositories/recipe.repository'
 import { RecipeCategoryRepository } from '@/repositories/recipe-category.repository'
@@ -178,6 +179,22 @@ export const RecipesList: React.FC = () => {
                   key={recipe.id} 
                   className="bg-white border border-[#E5E7EB] rounded-xl overflow-hidden shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow duration-200"
                 >
+                  {/* Thumbnail */}
+                  <div className="relative h-40 w-full bg-gray-50 border-b border-[#E5E7EB] overflow-hidden">
+                    {recipe.imageStoragePath ? (
+                      <img 
+                        src={recipe.imageStoragePath} 
+                        alt={recipe.name} 
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="h-full w-full bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col items-center justify-center text-gray-400 gap-2">
+                        <ChefHat className="h-8 w-8 text-gray-300" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Belum Ada Thumbnail</span>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="p-5 space-y-4">
                     {/* Header */}
                     <div className="flex items-start justify-between gap-2">
@@ -196,9 +213,21 @@ export const RecipesList: React.FC = () => {
                       )}
                     </div>
 
-                    <p className="text-xs text-gray-500 line-clamp-2 h-8 leading-relaxed">
-                      {recipe.description || 'Tidak ada deskripsi.'}
-                    </p>
+                    <div className="h-8 flex items-center">
+                      {recipe.description ? (
+                        <a 
+                          href={recipe.description} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 hover:underline transition-colors duration-200"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          <span>Tonton Video Sumber</span>
+                        </a>
+                      ) : (
+                        <span className="text-xs text-gray-400 italic">Tidak ada link sumber</span>
+                      )}
+                    </div>
 
                     {/* Cost Indicators */}
                     <div className="grid grid-cols-2 gap-4 pt-2 border-t border-[#E5E7EB]">

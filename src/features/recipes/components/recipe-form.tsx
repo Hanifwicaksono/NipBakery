@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, useFieldArray, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -11,8 +11,18 @@ import {
   Sparkles,
   AlertTriangle,
   Layers,
-  HelpCircle
+  HelpCircle,
+  Upload,
+  ImageOff,
+  Image,
+  Video,
+  ExternalLink
 } from 'lucide-react'
+import Fuse from 'fuse.js'
+
+import { getAI, getGenerativeModel, GoogleAIBackend } from 'firebase/ai'
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
+import { app, storage, auth } from '@/firebase/config'
 
 import { RecipeRepository } from '@/repositories/recipe.repository'
 import { RecipeCategoryRepository } from '@/repositories/recipe-category.repository'
@@ -38,11 +48,12 @@ const unitRepo = new UnitRepository()
 const FormSchema = z.object({
   name: z.string().min(1, 'Recipe name is required'),
   categoryId: z.string().min(1, 'Category is required'),
-  description: z.string().optional(),
+  description: z.string().url('Format URL tidak valid (harus diawali http:// atau https://)').or(z.literal('')).optional(),
   servings: z.coerce.number().int('Must be integer').positive('Must be positive'),
   servingUnitId: z.string().min(1, 'Serving unit is required'),
   markupPercentage: z.coerce.number().nonnegative('Markup must be non-negative'),
   isSubRecipe: z.boolean(),
+  imageStoragePath: z.string().nullable().optional(),
   items: z.array(z.object({
     type: z.enum(['ingredient', 'recipe']),
     id: z.string().min(1, 'Select an item'),
@@ -96,6 +107,11 @@ export const RecipeForm: React.FC<RecipeFormProps> = ({ recipe, onClose }) => {
     return new Map(filtered.map(r => [r.id, r]))
   }, [allRecipes, recipe])
 
+  const recipeIdRef = useRef(recipe?.id || `rec_${Date.now()}`)
+  const [isScanning, setIsScanning] = useState(false)
+  const [isUploadingThumbnail, setIsUploadingThumbnail] = useState(false)
+  const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(recipe?.imageStoragePath || null)
+
   // Form initialization
   const { register, control, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(FormSchema),
@@ -107,12 +123,207 @@ export const RecipeForm: React.FC<RecipeFormProps> = ({ recipe, onClose }) => {
       servingUnitId: recipe?.servingUnitId || 'pcs',
       markupPercentage: recipe?.markupPercentage || 100,
       isSubRecipe: recipe?.isSubRecipe || false,
+      imageStoragePath: recipe?.imageStoragePath || null,
       items: recipe?.items || [
         { type: 'ingredient', id: '', quantity: 1, unitId: 'g' }
       ],
       overheads: recipe?.overheads || [],
     },
   })
+
+  // Helpers for screenshot upload & parsing
+  const fileToGenerativePart = async (file: File) => {
+    return new Promise<{ inlineData: { data: string; mimeType: string } }>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = (reader.result as string).split(',')[1];
+        resolve({
+          inlineData: {
+            data: base64,
+            mimeType: file.type,
+          },
+        });
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  const handleScreenshotChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setIsScanning(true)
+    try {
+      const ai = getAI(app, { backend: new GoogleAIBackend() })
+      const model = getGenerativeModel(ai, {
+        model: 'gemini-3.5-flash',
+        generationConfig: {
+          responseMimeType: 'application/json',
+        },
+      })
+
+      const imagePart = await fileToGenerativePart(file)
+
+      const prompt = `Analisis screenshot resep ini. Ekstrak informasi resep ke dalam format JSON berikut:
+{
+  "name": "Nama Resep",
+  "servings": 4, // jumlah porsi (integer)
+  "servingUnit": "pcs", // unit hasil porsi, e.g. "pcs", "g", "ml", "porsi", "loyang"
+  "sourceUrl": "Link sumber video (YouTube atau TikTok) jika tertera di screenshot, jika tidak kosongkan saja",
+  "ingredients": [
+    {
+      "name": "Nama bahan baku",
+      "quantity": 150.5, // jumlah bahan baku (number)
+      "unit": "g" // unit bahan baku, e.g. "g", "ml", "pcs", "kg", "sdm", "sdt", dll.
+    }
+  ]
+}
+PENTING:
+1. Pastikan JSON valid.
+2. Jangan sertakan pembungkus markdown (seperti \`\`\`json ... \`\`\`). Cukup teks JSON saja.
+`
+
+      const result = await model.generateContent([prompt, imagePart])
+      const text = result.response.text()
+
+      let cleanJson = text.trim()
+      if (cleanJson.startsWith('```')) {
+        cleanJson = cleanJson.replace(/^```json\s*/i, '').replace(/```$/, '').trim()
+      }
+      
+      const parsed = JSON.parse(cleanJson)
+
+      if (parsed.name) setValue('name', parsed.name)
+      if (parsed.servings) setValue('servings', parseInt(parsed.servings) || 1)
+      if (parsed.sourceUrl) setValue('description', parsed.sourceUrl)
+
+      if (parsed.servingUnit) {
+        const matchedServingUnit = units.find(u => 
+          u.abbreviation.toLowerCase() === parsed.servingUnit.toLowerCase() ||
+          u.name.toLowerCase() === parsed.servingUnit.toLowerCase()
+        )
+        if (matchedServingUnit) {
+          setValue('servingUnitId', matchedServingUnit.id)
+        } else {
+          setValue('servingUnitId', 'pcs')
+        }
+      }
+
+      const mappedItems: Array<{ type: 'ingredient' | 'recipe'; id: string; quantity: number; unitId: string }> = []
+      let currentIngredients = [...ingredients]
+      const defaultCategory = categories[0]?.id || 'cat_default'
+
+      for (const item of (parsed.ingredients || [])) {
+        if (!item.name) continue
+
+        let matched = currentIngredients.find(ing => ing.name.toLowerCase() === item.name.toLowerCase())
+        
+        if (!matched) {
+          const fuse = new Fuse(currentIngredients, { keys: ['name'], threshold: 0.4 })
+          const fuseResults = fuse.search(item.name)
+          if (fuseResults.length > 0) {
+            matched = fuseResults[0].item
+          }
+        }
+
+        let ingId = ''
+        let purchaseUnitId = 'g'
+
+        if (matched) {
+          ingId = matched.id
+          purchaseUnitId = matched.purchaseUnitId
+        } else {
+          const newIngId = `ing_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
+          
+          const matchedUnit = units.find(u => 
+            u.abbreviation.toLowerCase() === item.unit.toLowerCase() ||
+            u.name.toLowerCase() === item.unit.toLowerCase()
+          )
+          const newPurchaseUnitId = matchedUnit ? matchedUnit.id : 'g'
+
+          const newIng: Ingredient = {
+            id: newIngId,
+            name: item.name,
+            categoryId: defaultCategory,
+            supplierId: null,
+            purchasePrice: 0,
+            purchaseQuantity: 1,
+            purchaseUnitId: newPurchaseUnitId,
+            yieldPercentage: 100,
+            notes: 'Dibuat otomatis via screenshot resep',
+            lastUpdated: new Date().toISOString()
+          }
+
+          await ingredientRepo.create(newIng)
+          currentIngredients.push(newIng)
+          
+          ingId = newIngId
+          purchaseUnitId = newPurchaseUnitId
+        }
+
+        const qty = parseFloat(item.quantity) || 1
+        const matchedUnit = units.find(u => 
+          u.abbreviation.toLowerCase() === item.unit.toLowerCase() ||
+          u.name.toLowerCase() === item.unit.toLowerCase()
+        )
+        const unitId = matchedUnit ? matchedUnit.id : purchaseUnitId
+
+        mappedItems.push({
+          type: 'ingredient',
+          id: ingId,
+          quantity: qty,
+          unitId: unitId
+        })
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ['ingredients'] })
+      await queryClient.refetchQueries({ queryKey: ['ingredients'] })
+
+      if (mappedItems.length > 0) {
+        setValue('items', mappedItems)
+      }
+
+      alert('Screenshot berhasil dianalisis! Data resep dan bahan baku baru telah diperbarui.')
+    } catch (error: any) {
+      console.error('Error scanning screenshot:', error)
+      alert(`Gagal menganalisis screenshot: ${error.message}`)
+    } finally {
+      setIsScanning(false)
+      if (e.target) e.target.value = ''
+    }
+  }
+
+  // Thumbnail upload & remove handlers
+  const handleThumbnailChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const userId = auth.currentUser?.uid
+    if (!userId) {
+      alert('Anda harus login terlebih dahulu.')
+      return
+    }
+
+    setIsUploadingThumbnail(true)
+    try {
+      const storageRef = ref(storage, `users/${userId}/recipes/${recipeIdRef.current}/thumbnail`)
+      const snapshot = await uploadBytes(storageRef, file)
+      const downloadURL = await getDownloadURL(snapshot.ref)
+      
+      setValue('imageStoragePath', downloadURL)
+      setThumbnailPreview(downloadURL)
+    } catch (error: any) {
+      console.error('Gagal mengunggah thumbnail:', error)
+      alert(`Gagal mengunggah thumbnail: ${error.message}`)
+    } finally {
+      setIsUploadingThumbnail(false)
+    }
+  }
+
+  const handleRemoveThumbnail = () => {
+    setValue('imageStoragePath', null)
+    setThumbnailPreview(null)
+  }
 
   // Dynamic arrays
   const { fields: itemFields, append: appendItem, remove: removeItem } = useFieldArray({
@@ -221,7 +432,7 @@ export const RecipeForm: React.FC<RecipeFormProps> = ({ recipe, onClose }) => {
       const sellingPrice = liveCostBreakdown ? liveCostBreakdown.sellingPrice.toNumber() : 0
 
       const cleanRecipe: Recipe = {
-        id: recipe?.id || `rec_${Date.now()}`,
+        id: recipeIdRef.current,
         name: formData.name,
         categoryId: formData.categoryId,
         description: formData.description || '',
@@ -233,12 +444,13 @@ export const RecipeForm: React.FC<RecipeFormProps> = ({ recipe, onClose }) => {
         cachedCost: HppCost,
         cachedSellingPrice: sellingPrice,
         isSubRecipe: formData.isSubRecipe,
+        imageStoragePath: formData.imageStoragePath || null,
         version: recipe?.version || 1,
         lastUpdated: new Date().toISOString(),
       }
 
       if (recipe) {
-        await recipeRepo.update(recipe.id, cleanRecipe)
+        await recipeRepo.update(recipeIdRef.current, cleanRecipe)
       } else {
         await recipeRepo.create(cleanRecipe)
       }
@@ -329,7 +541,106 @@ export const RecipeForm: React.FC<RecipeFormProps> = ({ recipe, onClose }) => {
             <CardHeader className="border-b border-[#E5E7EB] px-6 py-4 bg-gray-50/50">
               <CardTitle className="text-base font-bold text-gray-900">Informasi Umum</CardTitle>
             </CardHeader>
-            <CardContent className="p-6 space-y-4">
+            <CardContent className="p-6 space-y-6">
+              {/* Screenshot & Thumbnail Control Panel */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 border border-dashed border-gray-200 bg-gray-50/50 rounded-xl">
+                {/* 1. Impor dari Screenshot */}
+                <div className="space-y-3 flex flex-col justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <Sparkles className="h-4 w-4 text-yellow-500 fill-yellow-500/20" />
+                      <span>Impor via Screenshot</span>
+                    </h4>
+                    <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                      Punya screenshot resep? Unggah gambarnya, Gemini AI akan mendeteksi nama, porsi, dan bahan secara otomatis. Bahan baru akan otomatis dibuat jika belum ada.
+                    </p>
+                  </div>
+                  <div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      id="screenshot-input"
+                      onChange={handleScreenshotChange}
+                      disabled={isScanning}
+                      className="hidden"
+                    />
+                    <label
+                      htmlFor="screenshot-input"
+                      className={`w-full flex items-center justify-center gap-2 border border-gray-200 bg-white hover:bg-gray-50 px-4 py-2.5 rounded-xl cursor-pointer text-xs font-bold text-gray-700 shadow-sm transition-colors duration-200 ${
+                        isScanning ? 'opacity-50 pointer-events-none' : ''
+                      }`}
+                    >
+                      {isScanning ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-gray-600" />
+                      ) : (
+                        <Upload className="h-4 w-4 text-gray-500" />
+                      )}
+                      <span>{isScanning ? 'Menganalisis screenshot...' : 'Pilih Berkas Screenshot'}</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* 2. Thumbnail Resep */}
+                <div className="space-y-3 flex flex-col md:flex-row gap-4 items-center md:items-stretch">
+                  <div className="w-24 h-24 rounded-lg border border-gray-200 bg-white overflow-hidden shrink-0 flex items-center justify-center relative group">
+                    {thumbnailPreview ? (
+                      <>
+                        <img src={thumbnailPreview} alt="Pratinjau resep" className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={handleRemoveThumbnail}
+                          className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] font-bold transition-opacity duration-200 rounded-lg cursor-pointer"
+                        >
+                          Hapus Gambar
+                        </button>
+                      </>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center text-gray-400 gap-1 p-2 text-center">
+                        <ImageOff className="h-6 w-6 text-gray-300" />
+                        <span className="text-[8px] font-semibold uppercase tracking-wider text-gray-400">Belum Ada</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex-1 flex flex-col justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <Image className="h-4 w-4 text-gray-500" />
+                        <span>Thumbnail Resep</span>
+                      </h4>
+                      <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                        Unggah foto hasil akhir resep. Foto ini akan muncul di kartu daftar resep.
+                      </p>
+                    </div>
+                    <div className="mt-2">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        id="thumbnail-input"
+                        onChange={handleThumbnailChange}
+                        disabled={isUploadingThumbnail}
+                        className="hidden"
+                      />
+                      <label
+                        htmlFor="thumbnail-input"
+                        className={`w-full flex items-center justify-center gap-2 border border-gray-200 bg-white hover:bg-gray-50 px-4 py-2.5 rounded-xl cursor-pointer text-xs font-bold text-gray-700 shadow-sm transition-colors duration-200 ${
+                          isUploadingThumbnail ? 'opacity-50 pointer-events-none' : ''
+                        }`}
+                      >
+                        {isUploadingThumbnail ? (
+                          <Loader2 className="h-4 w-4 animate-spin text-gray-600" />
+                        ) : (
+                          <Upload className="h-4 w-4 text-gray-500" />
+                        )}
+                        <span>{isUploadingThumbnail ? 'Mengunggah...' : 'Unggah Foto'}</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <hr className="border-[#E5E7EB]" />
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5 col-span-2">
                   <label htmlFor="rec-name" className="text-sm font-semibold text-gray-700">Nama Resep *</label>
@@ -437,13 +748,17 @@ export const RecipeForm: React.FC<RecipeFormProps> = ({ recipe, onClose }) => {
               </div>
 
               <div className="space-y-1.5">
-                <label htmlFor="desc" className="text-sm font-semibold text-gray-700">Deskripsi Resep</label>
+                <label htmlFor="desc" className="text-sm font-semibold text-gray-700">Link Sumber (YouTube / TikTok)</label>
                 <Input
                   id="desc"
-                  placeholder="Keterangan cara pembuatan atau detail penyimpanan"
+                  type="url"
+                  placeholder="misal: https://www.youtube.com/watch?v=... atau https://www.tiktok.com/@..."
                   className="rounded-lg border-[#E5E7EB]"
                   {...register('description')}
                 />
+                {errors.description && (
+                  <p className="text-xs text-red-500 font-medium">{errors.description.message}</p>
+                )}
               </div>
             </CardContent>
           </Card>
