@@ -13,8 +13,12 @@ import {
   Database,
   RefreshCw,
   LogOut,
-  User as UserIcon
+  User as UserIcon,
+  Sparkles
 } from 'lucide-react'
+
+import { getAI, getGenerativeModel, GoogleAIBackend } from 'firebase/ai'
+import { app } from '@/firebase/config'
 
 import { SystemSettingsRepository } from '@/repositories/system-settings.repository'
 import { UnitRepository } from '@/repositories/unit.repository'
@@ -62,6 +66,130 @@ export const SettingsPanel: React.FC = () => {
   // Security check for reset
   const [resetConfirmInput, setResetConfirmInput] = useState('')
   const [isResetting, setIsResetting] = useState(false)
+
+  // AI Cleanup state & handler
+  const [isCleaning, setIsCleaning] = useState(false)
+  
+  const handleAICleanup = async () => {
+    if (!confirm('Apakah Anda yakin ingin menganalisis dan membersihkan duplikat bahan baku? Tindakan ini akan menggabungkan duplikat bahan baku, menghapus duplikatnya, mengupdate resep-resep terkait, dan menyetel harganya ke rata-rata di Indonesia secara otomatis.')) {
+      return
+    }
+
+    setIsCleaning(true)
+    try {
+      const allIngredients = await ingredientRepo.list()
+      const allRecipes = await recipeRepo.list()
+
+      if (allIngredients.length === 0) {
+        alert('Database bahan baku Anda kosong.')
+        return
+      }
+
+      const ai = getAI(app, { backend: new GoogleAIBackend() })
+      const model = getGenerativeModel(ai, {
+        model: 'gemini-2.5-flash',
+        generationConfig: {
+          responseMimeType: 'application/json',
+        },
+      })
+
+      const prompt = `Anda adalah sistem manajemen database bahan baku. Misi Anda adalah menganalisis daftar bahan baku dan mengonsolidasikan item yang duplikat atau sangat mirip secara penamaan maupun semantik (contoh: \"Terigu\" dengan \"Tepung Terigu\", atau \"Telur Ayam\" dengan \"Telur\").
+      
+Berikut adalah daftar bahan baku saat ini:
+${JSON.stringify(allIngredients.map(ing => ({ id: ing.id, name: ing.name, unit: ing.purchaseUnitId, price: ing.purchasePrice })))}
+
+Kelompokkan bahan-bahan yang mirip. Untuk setiap kelompok:
+1. Pilih satu ID sebagai \"keepId\" (bahan utama yang dipertahankan).
+2. Tentukan nama terbaik/paling standar sebagai \"newName\".
+3. Daftarkan ID lainnya sebagai \"deleteIds\" (yang akan dihapus dan digabungkan).
+4. Estimasi harga pembelian rata-rata bahan baku tersebut di Indonesia dalam Rupiah (IDR) per unit pembelian tersebut dan isi pada \"averagePrice\" (berdasarkan pengetahuan umum pasar Indonesia tahun 2024-2026).
+
+Keluarkan output HANYA dalam format JSON berikut:
+{
+  \"merges\": [
+    {
+      \"keepId\": \"id_bahan_utama\",
+      \"deleteIds\": [\"id_duplikat_1\", \"id_duplikat_2\"],
+      \"newName\": \"Nama Bahan Baku Utama\",
+      \"averagePrice\": 12000
+    }
+  ]
+}
+`
+
+      const result = await model.generateContent(prompt)
+      const text = result.response.text()
+
+      let cleanJson = text.trim()
+      if (cleanJson.startsWith('```')) {
+        cleanJson = cleanJson.replace(/^```json\s*/i, '').replace(/```$/, '').trim()
+      }
+
+      const parsed = JSON.parse(cleanJson)
+
+      if (!parsed.merges || parsed.merges.length === 0) {
+        alert('Tidak ditemukan bahan baku duplikat atau mirip. Database Anda sudah bersih!')
+        return
+      }
+
+      let deletedCount = 0
+      let updatedCount = 0
+      let recipeUpdatedCount = 0
+
+      for (const merge of parsed.merges) {
+        const keepId = merge.keepId
+        const deleteIds = merge.deleteIds || []
+        const newName = merge.newName
+        const averagePrice = merge.averagePrice
+
+        if (!keepId) continue
+
+        const existingIng = allIngredients.find(ing => ing.id === keepId)
+        if (existingIng) {
+          await ingredientRepo.update(keepId, {
+            name: newName,
+            purchasePrice: averagePrice,
+            lastUpdated: new Date().toISOString()
+          })
+          updatedCount++
+        }
+
+        for (const delId of deleteIds) {
+          await ingredientRepo.delete(delId)
+          deletedCount++
+        }
+
+        for (const recipe of allRecipes) {
+          let recipeModified = false
+          const updatedItems = recipe.items.map(item => {
+            if (item.type === 'ingredient' && deleteIds.includes(item.id)) {
+              recipeModified = true
+              return { ...item, id: keepId }
+            }
+            return item
+          })
+
+          if (recipeModified) {
+            await recipeRepo.update(recipe.id, {
+              items: updatedItems,
+              lastUpdated: new Date().toISOString()
+            })
+            recipeUpdatedCount++
+          }
+        }
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ['ingredients'] })
+      await queryClient.invalidateQueries({ queryKey: ['recipes'] })
+
+      alert(`Konsolidasi Selesai!\n- ${updatedCount} bahan diperbarui namanya & diisi harga rata-rata Indonesia.\n- ${deletedCount} bahan duplikat dihapus.\n- ${recipeUpdatedCount} resep disesuaikan referensinya.`);
+    } catch (error: any) {
+      console.error('Error during AI consolidation:', error)
+      alert(`Gagal melakukan konsolidasi bahan: ${error.message}`)
+    } finally {
+      setIsCleaning(false)
+    }
+  }
 
   const handleLogout = async () => {
     if (confirm('Apakah Anda yakin ingin keluar dari akun ini?')) {
@@ -531,6 +659,27 @@ export const SettingsPanel: React.FC = () => {
                     <span>{isImporting ? 'Sedang Memulihkan...' : 'Unggah Berkas Backup'}</span>
                   </label>
                 </div>
+              </div>
+
+              <hr className="border-[#E5E7EB]" />
+
+              {/* AI Cleanup Panel */}
+              <div className="space-y-3 bg-yellow-50/20 p-4 border border-dashed border-yellow-250 rounded-xl">
+                <h4 className="text-xs font-bold text-yellow-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <Sparkles className="h-4 w-4 text-yellow-600 fill-yellow-500/20" />
+                  <span>Konsolidasi Bahan Baku (AI)</span>
+                </h4>
+                <p className="text-xs text-gray-600 leading-relaxed">
+                  Menganalisis seluruh bahan baku Anda untuk mendeteksi item duplikat atau mirip (misal: "terigu" dan "tepung terigu"). Sistem akan menggabungkannya, menyesuaikan referensi di resep, dan mengisi harganya dengan **harga rata-rata di Indonesia** secara otomatis.
+                </p>
+                <Button
+                  onClick={handleAICleanup}
+                  disabled={isCleaning}
+                  className="w-full bg-[#111827] text-white hover:bg-gray-800 rounded-xl flex items-center justify-center gap-2 font-medium cursor-pointer"
+                >
+                  {isCleaning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-yellow-400" />}
+                  <span>{isCleaning ? 'Menganalisis & Menggabungkan...' : 'Bersihkan & Konsolidasi dengan AI'}</span>
+                </Button>
               </div>
 
             </CardContent>

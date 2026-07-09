@@ -161,6 +161,13 @@ export const RecipeForm: React.FC<RecipeFormProps> = ({ recipe, onClose }) => {
 
       const imagePart = await fileToGenerativePart(file)
 
+      const masterIngredients = ingredients.map(ing => ({
+        id: ing.id,
+        name: ing.name,
+        unit: ing.purchaseUnitId,
+        price: ing.purchasePrice
+      }))
+
       const prompt = `Analisis screenshot resep ini. Ekstrak informasi resep ke dalam format JSON berikut:
 {
   "name": "Nama Resep",
@@ -169,15 +176,23 @@ export const RecipeForm: React.FC<RecipeFormProps> = ({ recipe, onClose }) => {
   "sourceUrl": "Link sumber video (YouTube atau TikTok) jika tertera di screenshot, jika tidak kosongkan saja",
   "ingredients": [
     {
-      "name": "Nama bahan baku",
+      "name": "Nama bahan baku dari screenshot",
       "quantity": 150.5, // jumlah bahan baku (number)
-      "unit": "g" // unit bahan baku, e.g. "g", "ml", "pcs", "kg", "sdm", "sdt", dll.
+      "unit": "g", // unit bahan baku di screenshot, e.g. "g", "ml", "pcs", "kg", "sdm", "sdt", dll.
+      "matchedMasterId": "ID bahan dari daftar Master Bahan Baku di bawah yang cocok/mirip secara semantik (misal: 'sugar' cocok dengan 'gula pasir', 'butter' cocok dengan 'mentega'). Jika tidak ada yang cocok/mirip, set null.",
+      "estimatedAveragePrice": 15000, // Jika matchedMasterId adalah null, berikan estimasi harga rata-rata bahan baku ini di Indonesia dalam Rupiah (IDR) per unit pembelian standar di bawah.
+      "estimatedPurchaseUnit": "kg" // Jika matchedMasterId adalah null, berikan satuan pembelian standar di Indonesia (e.g. "kg", "l", "pcs") yang sesuai dengan estimasi harga di atas.
     }
   ]
 }
-PENTING:
-1. Pastikan JSON valid.
-2. Jangan sertakan pembungkus markdown (seperti \`\`\`json ... \`\`\`). Cukup teks JSON saja.
+
+Berikut adalah daftar Master Bahan Baku yang saat ini sudah ada di database kami:
+${JSON.stringify(masterIngredients)}
+
+Aturan Penting:
+1. Lakukan pencocokan secara semantik (arti bahasa, padanan kata). Jangan membuat bahan baru jika ada bahan Master yang sudah mewakili (misalnya: 'tepung terigu protein sedang' mirip dengan 'Tepung Terigu').
+2. Jika bahan benar-benar baru, berikan estimasi harga rata-rata bahan baku tersebut di pasaran Indonesia (contoh: Cream Cheese estimasi Rp 120.000 per kg).
+3. Pastikan output JSON valid dan bersih tanpa markdown pembungkus (\`\`\`json).
 `
 
       const result = await model.generateContent([prompt, imagePart])
@@ -213,13 +228,16 @@ PENTING:
       for (const item of (parsed.ingredients || [])) {
         if (!item.name) continue
 
-        let matched = currentIngredients.find(ing => ing.name.toLowerCase() === item.name.toLowerCase())
+        let matched = item.matchedMasterId ? currentIngredients.find(ing => ing.id === item.matchedMasterId) : null
         
         if (!matched) {
-          const fuse = new Fuse(currentIngredients, { keys: ['name'], threshold: 0.4 })
-          const fuseResults = fuse.search(item.name)
-          if (fuseResults.length > 0) {
-            matched = fuseResults[0].item
+          matched = currentIngredients.find(ing => ing.name.toLowerCase() === item.name.toLowerCase())
+          if (!matched) {
+            const fuse = new Fuse(currentIngredients, { keys: ['name'], threshold: 0.4 })
+            const fuseResults = fuse.search(item.name)
+            if (fuseResults.length > 0) {
+              matched = fuseResults[0].item
+            }
           }
         }
 
@@ -233,21 +251,22 @@ PENTING:
           const newIngId = `ing_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
           
           const matchedUnit = units.find(u => 
-            u.abbreviation.toLowerCase() === item.unit.toLowerCase() ||
-            u.name.toLowerCase() === item.unit.toLowerCase()
+            u.abbreviation.toLowerCase() === (item.estimatedPurchaseUnit || item.unit || 'g').toLowerCase() ||
+            u.name.toLowerCase() === (item.estimatedPurchaseUnit || item.unit || 'g').toLowerCase()
           )
           const newPurchaseUnitId = matchedUnit ? matchedUnit.id : 'g'
+          const averagePrice = parseFloat(item.estimatedAveragePrice) || 0
 
           const newIng: Ingredient = {
             id: newIngId,
             name: item.name,
             categoryId: defaultCategory,
             supplierId: null,
-            purchasePrice: 0,
+            purchasePrice: averagePrice,
             purchaseQuantity: 1,
             purchaseUnitId: newPurchaseUnitId,
             yieldPercentage: 100,
-            notes: 'Dibuat otomatis via screenshot resep',
+            notes: 'Dibuat otomatis via screenshot resep (Harga rata-rata AI Indonesia)',
             lastUpdated: new Date().toISOString()
           }
 
@@ -280,7 +299,7 @@ PENTING:
         setValue('items', mappedItems)
       }
 
-      alert('Screenshot berhasil dianalisis! Data resep dan bahan baku baru telah diperbarui.')
+      alert('Screenshot berhasil dianalisis! Bahan baku baru telah dicocokkan atau dibuat secara otomatis dengan estimasi harga pasar.')
     } catch (error: any) {
       console.error('Error scanning screenshot:', error)
       alert(`Gagal menganalisis screenshot: ${error.message}`)
