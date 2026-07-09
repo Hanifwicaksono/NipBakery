@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
-import { initAuth } from '@/firebase/config'
+import { auth, onAuthStateChanged } from '@/firebase/config'
+import type { User } from 'firebase/auth'
 import { UnitRepository } from '@/repositories/unit.repository'
 import { IngredientRepository } from '@/repositories/ingredient.repository'
 import { RecipeRepository } from '@/repositories/recipe.repository'
@@ -8,12 +9,14 @@ import { RecipeCategoryRepository } from '@/repositories/recipe-category.reposit
 
 interface AppContextProps {
   userId: string | null;
+  user: User | null;
   isAuthenticated: boolean;
   isLoadingAuth: boolean;
 }
 
 const AppContext = createContext<AppContextProps>({
   userId: null,
+  user: null,
   isAuthenticated: false,
   isLoadingAuth: true,
 })
@@ -26,6 +29,7 @@ interface AppProviderProps {
 
 export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   const [userId, setUserId] = useState<string | null>(null)
+  const [user, setUser] = useState<User | null>(null)
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
   const [isLoadingAuth, setIsLoadingAuth] = useState<boolean>(true)
 
@@ -33,16 +37,14 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     // Register recalculation engine callback
     IngredientRepository.onPriceChange = RecipeRepository.recalculateAffectedRecipes
 
-    let active = true
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        setUser(currentUser)
+        setUserId(currentUser.uid)
+        setIsAuthenticated(true)
 
-    const authenticate = async () => {
-      try {
-        const uid = await initAuth()
-        if (active) {
-          setUserId(uid)
-          setIsAuthenticated(true)
-
-          // Once authenticated, trigger the default units & settings seeding
+        // Once authenticated, trigger the default units & settings seeding
+        try {
           const unitRepo = new UnitRepository()
           await unitRepo.seedDefaultUnits()
 
@@ -51,27 +53,25 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
           const recipeCatRepo = new RecipeCategoryRepository()
           await recipeCatRepo.seedDefaultRecipeCategory()
+        } catch (error) {
+          console.error('Failed to initialize app authentication & seeding:', error)
         }
-      } catch (error) {
-        console.error('Failed to initialize app authentication & seeding:', error)
-      } finally {
-        if (active) {
-          setIsLoadingAuth(false)
-        }
+      } else {
+        setUser(null)
+        setUserId(null)
+        setIsAuthenticated(false)
       }
-    }
+      setIsLoadingAuth(false)
+    })
 
-    authenticate()
-
-    return () => {
-      active = false
-    }
+    return () => unsubscribe()
   }, [])
 
   return (
-    <AppContext.Provider value={{ userId, isAuthenticated, isLoadingAuth }}>
+    <AppContext.Provider value={{ userId, user, isAuthenticated, isLoadingAuth }}>
       {children}
     </AppContext.Provider>
   )
 }
 export default AppContext
+

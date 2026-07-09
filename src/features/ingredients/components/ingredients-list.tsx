@@ -252,6 +252,115 @@ export const IngredientsList: React.FC = () => {
     }
   }
 
+  const [isSeeding, setIsSeeding] = useState(false)
+
+  const handleSeedCommonIngredients = async () => {
+    const confirmed = confirm(
+      'Apakah Anda ingin mengisi database dengan 20+ bahan baku umum bakery? Bahan yang sudah ada dengan nama yang sama akan dilewati.'
+    )
+    if (!confirmed) return
+
+    setIsSeeding(true)
+    try {
+      // 1. Create categories if they don't exist
+      const defaultCategories = [
+        { id: 'cat_tepung', name: 'Tepung & Pati' },
+        { id: 'cat_gula', name: 'Gula & Pemanis' },
+        { id: 'cat_lemak', name: 'Lemak & Minyak' },
+        { id: 'cat_dairy', name: 'Susu & Olahan Dairy' },
+        { id: 'cat_pengembang', name: 'Ragi & Pengembang' },
+        { id: 'cat_telur', name: 'Telur' },
+        { id: 'cat_flavor', name: 'Perasa, Cokelat & Rempah' },
+      ]
+
+      const existingCats = await categoryRepo.list()
+      const existingCatNames = new Set(existingCats.map(c => c.name.toLowerCase()))
+
+      for (const cat of defaultCategories) {
+        if (!existingCatNames.has(cat.name.toLowerCase())) {
+          const idExists = existingCats.some(c => c.id === cat.id)
+          const finalId = idExists ? `cat_${Date.now()}_${Math.floor(Math.random() * 1000)}` : cat.id
+          await categoryRepo.create({ id: finalId, name: cat.name })
+        }
+      }
+
+      // Refresh categories list
+      const freshCats = await categoryRepo.list()
+      const catMapByName = new Map(freshCats.map(c => [c.name.toLowerCase(), c.id]))
+
+      // Helper to find category ID by name
+      const getCatId = (name: string) => {
+        return catMapByName.get(name.toLowerCase()) || 'cat_umum'
+      }
+
+      // 2. Define common ingredients
+      const commonIngredients = [
+        { name: 'Tepung Terigu Protein Tinggi (Cakra Kembar)', categoryName: 'Tepung & Pati', qty: 1000, unit: 'g', yield: 100 },
+        { name: 'Tepung Terigu Protein Sedang (Segitiga Biru)', categoryName: 'Tepung & Pati', qty: 1000, unit: 'g', yield: 100 },
+        { name: 'Tepung Terigu Protein Rendah (Kunci Biru)', categoryName: 'Tepung & Pati', qty: 1000, unit: 'g', yield: 100 },
+        { name: 'Tepung Maizena', categoryName: 'Tepung & Pati', qty: 1000, unit: 'g', yield: 100 },
+        { name: 'Tepung Tapioka', categoryName: 'Tepung & Pati', qty: 1000, unit: 'g', yield: 100 },
+        { name: 'Gula Pasir', categoryName: 'Gula & Pemanis', qty: 1000, unit: 'g', yield: 100 },
+        { name: 'Gula Halus', categoryName: 'Gula & Pemanis', qty: 1000, unit: 'g', yield: 100 },
+        { name: 'Brown Sugar', categoryName: 'Gula & Pemanis', qty: 1000, unit: 'g', yield: 100 },
+        { name: 'Madu', categoryName: 'Gula & Pemanis', qty: 1000, unit: 'g', yield: 100 },
+        { name: 'Mentega / Butter Wijsman', categoryName: 'Lemak & Minyak', qty: 1000, unit: 'g', yield: 100 },
+        { name: 'Mentega / Butter Anchor (Unsalted)', categoryName: 'Lemak & Minyak', qty: 1000, unit: 'g', yield: 100 },
+        { name: 'Margarin Blue Band', categoryName: 'Lemak & Minyak', qty: 1000, unit: 'g', yield: 100 },
+        { name: 'Korsvet / Puff Pastry Margarine', categoryName: 'Lemak & Minyak', qty: 1000, unit: 'g', yield: 100 },
+        { name: 'Minyak Sayur', categoryName: 'Lemak & Minyak', qty: 1000, unit: 'ml', yield: 100 },
+        { name: 'Susu UHT Full Cream', categoryName: 'Susu & Olahan Dairy', qty: 1000, unit: 'ml', yield: 100 },
+        { name: 'Susu Bubuk Full Cream (Indomilk/Anchor)', categoryName: 'Susu & Olahan Dairy', qty: 1000, unit: 'g', yield: 100 },
+        { name: 'Whipping Cream Cair', categoryName: 'Susu & Olahan Dairy', qty: 1000, unit: 'ml', yield: 100 },
+        { name: 'Keju Cheddar Kraft', categoryName: 'Susu & Olahan Dairy', qty: 1000, unit: 'g', yield: 100 },
+        { name: 'Keju Mozzarella', categoryName: 'Susu & Olahan Dairy', qty: 1000, unit: 'g', yield: 100 },
+        { name: 'Ragi Instan (Fermipan)', categoryName: 'Ragi & Pengembang', qty: 500, unit: 'g', yield: 100 },
+        { name: 'Baking Powder', categoryName: 'Ragi & Pengembang', qty: 100, unit: 'g', yield: 100 },
+        { name: 'Soda Kue (Bicarbonate of Soda)', categoryName: 'Ragi & Pengembang', qty: 100, unit: 'g', yield: 100 },
+        { name: 'TBM / SP / Ovalett', categoryName: 'Ragi & Pengembang', qty: 100, unit: 'g', yield: 100 },
+        { name: 'Telur Ayam Utuh', categoryName: 'Telur', qty: 1, unit: 'pcs', yield: 90 },
+        { name: 'Kuning Telur', categoryName: 'Telur', qty: 1, unit: 'pcs', yield: 100 },
+        { name: 'Putih Telur', categoryName: 'Telur', qty: 1, unit: 'pcs', yield: 100 },
+        { name: 'Cokelat Bubuk (Van Houten)', categoryName: 'Perasa, Cokelat & Rempah', qty: 1000, unit: 'g', yield: 100 },
+        { name: 'Cokelat Batang / DCC (Colatta)', categoryName: 'Perasa, Cokelat & Rempah', qty: 1000, unit: 'g', yield: 100 },
+        { name: 'Pasta Vanilla', categoryName: 'Perasa, Cokelat & Rempah', qty: 100, unit: 'ml', yield: 100 },
+        { name: 'Garam Halus', categoryName: 'Perasa, Cokelat & Rempah', qty: 1000, unit: 'g', yield: 100 },
+      ]
+
+      const existingIngs = await ingredientRepo.list()
+      const existingIngNames = new Set(existingIngs.map(i => i.name.toLowerCase()))
+
+      let addedCount = 0
+      for (const item of commonIngredients) {
+        if (!existingIngNames.has(item.name.toLowerCase())) {
+          const newIng: Ingredient = {
+            id: `ing_seed_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+            name: item.name,
+            categoryId: getCatId(item.categoryName),
+            supplierId: null,
+            purchasePrice: 0,
+            purchaseQuantity: item.qty,
+            purchaseUnitId: item.unit,
+            yieldPercentage: item.yield,
+            notes: 'Bahan baku umum bakery bawaan sistem.',
+            lastUpdated: new Date().toISOString(),
+          }
+          await ingredientRepo.create(newIng)
+          addedCount++
+        }
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['ingredients'] })
+      queryClient.invalidateQueries({ queryKey: ['categories'] })
+      alert(`Berhasil menambahkan ${addedCount} bahan baku umum beserta kategorinya!`)
+    } catch (error) {
+      console.error('Failed to seed ingredients:', error)
+      alert('Gagal menambahkan bahan baku umum. Silakan coba lagi.')
+    } finally {
+      setIsSeeding(false)
+    }
+  }
+
   // Filter and Search logic
   const filteredIngredients = useMemo(() => {
     let list = [...ingredients]
@@ -288,11 +397,23 @@ export const IngredientsList: React.FC = () => {
             Kelola data bahan baku, harga beli, persentase yield, serta kalkulasi harga satuan dasar.
           </CardDescription>
         </div>
-        <Button onClick={openNewDialog} className="bg-[#111827] text-white hover:bg-gray-800 rounded-xl flex items-center gap-2 font-medium shrink-0">
-          <Plus className="h-4 w-4" />
-          <span>Bahan Baku Baru</span>
-        </Button>
+        <div className="flex flex-wrap gap-2 shrink-0">
+          <Button
+            onClick={handleSeedCommonIngredients}
+            disabled={isSeeding}
+            variant="outline"
+            className="border-[#E5E7EB] hover:border-gray-900 rounded-xl flex items-center gap-2 font-semibold bg-white transition-all cursor-pointer h-8 text-xs"
+          >
+            {isSeeding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            <span>Isi Bahan Umum</span>
+          </Button>
+          <Button onClick={openNewDialog} className="bg-[#111827] text-white hover:bg-gray-800 rounded-xl flex items-center gap-2 font-medium shrink-0 h-8 text-xs">
+            <Plus className="h-4 w-4" />
+            <span>Bahan Baku Baru</span>
+          </Button>
+        </div>
       </CardHeader>
+
 
       {/* Filter and Search Bar */}
       <div className="p-6 border-b border-[#E5E7EB] flex flex-col sm:flex-row gap-4 bg-gray-50/10">

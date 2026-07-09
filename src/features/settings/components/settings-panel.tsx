@@ -11,7 +11,9 @@ import {
   Loader2, 
   CheckCircle,
   Database,
-  RefreshCw
+  RefreshCw,
+  LogOut,
+  User as UserIcon
 } from 'lucide-react'
 
 import { SystemSettingsRepository } from '@/repositories/system-settings.repository'
@@ -27,6 +29,9 @@ import type { SystemSettings } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
+import { useApp } from '@/contexts/app-context'
+import { auth, signOut } from '@/firebase/config'
+
 
 const settingsRepo = new SystemSettingsRepository()
 const unitRepo = new UnitRepository()
@@ -45,6 +50,7 @@ type FormData = z.infer<typeof FormSchema>;
 
 export const SettingsPanel: React.FC = () => {
   const queryClient = useQueryClient()
+  const { user } = useApp()
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   
@@ -57,11 +63,22 @@ export const SettingsPanel: React.FC = () => {
   const [resetConfirmInput, setResetConfirmInput] = useState('')
   const [isResetting, setIsResetting] = useState(false)
 
+  const handleLogout = async () => {
+    if (confirm('Apakah Anda yakin ingin keluar dari akun ini?')) {
+      try {
+        await signOut(auth)
+      } catch (err) {
+        console.error('Logout failed:', err)
+      }
+    }
+  }
+
   // Query global settings
   const { data: settings, isLoading } = useQuery<SystemSettings>({
     queryKey: ['settings'],
     queryFn: () => settingsRepo.getOrCreateGlobalSettings(),
   })
+
 
   // Form setup
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
@@ -413,6 +430,54 @@ export const SettingsPanel: React.FC = () => {
 
         {/* Right Side: JSON Backup & Restore Tools */}
         <div className="space-y-6">
+          {/* User Profile Card */}
+          {user && (
+            <Card className="border-[#E5E7EB] bg-white rounded-xl shadow-sm overflow-hidden">
+              <CardHeader className="border-b border-[#E5E7EB] px-6 py-4 bg-gray-50/50">
+                <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
+                  <UserIcon className="h-5 w-5 text-gray-600" />
+                  <span>Akun Sinkronisasi</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-[#111827] text-white flex items-center justify-center font-bold text-sm shadow-sm uppercase shrink-0">
+                    {user.isAnonymous ? 'T' : (user.displayName ? user.displayName.slice(0, 2) : (user.email ? user.email.slice(0, 2) : 'U'))}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-sm font-bold text-gray-900 truncate">
+                      {user.isAnonymous ? 'Mode Tamu (Lokal)' : (user.displayName || 'Pengguna NipBakery')}
+                    </h4>
+                    <p className="text-xs text-gray-500 truncate text-[10px]">
+                      {user.isAnonymous ? 'Data Anda tersimpan lokal di browser' : user.email}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-[11px] text-blue-850 leading-relaxed">
+                  {user.isAnonymous ? (
+                    <span>
+                      ⚠️ <strong>Mode Tamu Aktif</strong>: Data resep Anda hanya disimpan di browser ini saja. Gunakan tombol backup di bawah untuk memindahkan data, atau <strong>Logout</strong> dan masuk dengan Google/Email untuk mengaktifkan sinkronisasi otomatis.
+                    </span>
+                  ) : (
+                    <span>
+                      ✅ <strong>Sinkronisasi Cloud Aktif</strong>: Semua data resep dan bahan baku tersinkronisasi otomatis dengan akun ini di seluruh perangkat Anda (laptop & HP).
+                    </span>
+                  )}
+                </div>
+
+                <Button
+                  onClick={handleLogout}
+                  variant="destructive"
+                  className="w-full h-8 rounded-xl flex items-center justify-center gap-2 font-bold cursor-pointer text-xs"
+                >
+                  <LogOut className="h-4 w-4" />
+                  <span>Keluar dari Akun (Logout)</span>
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
           <Card className="border-[#E5E7EB] bg-white rounded-xl shadow-sm overflow-hidden">
             <CardHeader className="border-b border-[#E5E7EB] px-6 py-4 bg-gray-50/50">
               <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">

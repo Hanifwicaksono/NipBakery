@@ -5,8 +5,17 @@ import {
   persistentMultipleTabManager
 } from 'firebase/firestore'
 import type { Firestore } from 'firebase/firestore'
-import { getAuth, signInAnonymously } from 'firebase/auth'
-import type { Auth } from 'firebase/auth'
+import { 
+  getAuth, 
+  signInAnonymously, 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signOut, 
+  onAuthStateChanged 
+} from 'firebase/auth'
+import type { Auth, User } from 'firebase/auth'
 import { getStorage } from 'firebase/storage'
 import type { FirebaseStorage } from 'firebase/storage'
 
@@ -33,17 +42,34 @@ const db: Firestore = initializeFirestore(app, {
 const auth: Auth = getAuth(app)
 const storage: FirebaseStorage = getStorage(app)
 
-// Helper function to sign in anonymously
-export const initAuth = async (): Promise<string> => {
+// Provider setup
+const googleProvider = new GoogleAuthProvider()
+googleProvider.setCustomParameters({ prompt: 'select_account' })
+
+// Helper function to sign in anonymously (Guest Mode)
+export const signInAsGuest = async (): Promise<User> => {
   try {
     const userCredential = await signInAnonymously(auth)
     console.log('Signed in anonymously as:', userCredential.user.uid)
-    return userCredential.user.uid
+    return userCredential.user
   } catch (error) {
     console.error('Anonymous auth failed:', error)
     throw error;
   }
 }
 
-export { app, db, auth, storage }
+export { 
+  app, 
+  db, 
+  auth, 
+  storage, 
+  googleProvider,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged
+}
 export default app
+

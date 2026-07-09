@@ -14,7 +14,8 @@ import {
   Truck,
   FolderPlus,
   WifiOff,
-  Loader2
+  Loader2,
+  LogOut
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { IngredientRepository } from '@/repositories/ingredient.repository'
@@ -28,6 +29,9 @@ import { PricingSimulator } from '@/features/simulator/components/pricing-simula
 import { Button } from '@/components/ui/button'
 import { SettingsPanel } from '@/features/settings/components/settings-panel'
 import { useApp } from '@/contexts/app-context'
+import { auth, signOut } from '@/firebase/config'
+import { LoginPage } from '@/features/auth/components/login-page'
+
 
 const ingredientRepo = new IngredientRepository()
 const recipeRepo = new RecipeRepository()
@@ -53,10 +57,21 @@ function useOnlineStatus() {
 }
 
 function App() {
-  const { isLoadingAuth } = useApp()
+  const { isLoadingAuth, isAuthenticated, user } = useApp()
   const [activeTab, setActiveTab] = useState('dashboard')
   const [activeSubTab, setActiveSubTab] = useState('ingredients-list')
   const isOnline = useOnlineStatus()
+
+  const handleLogout = async () => {
+    if (confirm('Apakah Anda yakin ingin keluar dari akun ini?')) {
+      try {
+        await signOut(auth)
+      } catch (err) {
+        console.error('Logout failed:', err)
+      }
+    }
+  }
+
 
   // Queries
   const { data: ingredients = [] } = useQuery({
@@ -166,6 +181,10 @@ function App() {
     )
   }
 
+  if (!isAuthenticated) {
+    return <LoginPage />
+  }
+
   return (
     <div className="min-h-screen bg-[#F9FAFB] flex flex-col font-sans">
       {/* Top Navbar */}
@@ -200,9 +219,36 @@ function App() {
               <Database className="h-3.5 w-3.5" />
               <span>Firebase Offline Cache Active</span>
             </div>
+
+            {/* User Profile / Status */}
+            {user && (
+              <div className="flex items-center gap-2 border-l border-gray-200 pl-2 sm:pl-4">
+                <div className="flex flex-col text-right hidden lg:block">
+                  <span className="text-xs font-bold text-gray-900 leading-tight">
+                    {user.isAnonymous ? 'Tamu' : (user.displayName || 'Pengguna')}
+                  </span>
+                  <span className="text-[10px] text-gray-400 font-semibold truncate max-w-[120px]">
+                    {user.isAnonymous ? 'Data Tersimpan Lokal' : user.email}
+                  </span>
+                </div>
+                {/* Avatar/Initial */}
+                <div className="h-8 w-8 rounded-full bg-[#111827] text-white flex items-center justify-center font-bold text-xs shadow-sm uppercase shrink-0">
+                  {user.isAnonymous ? 'T' : (user.displayName ? user.displayName.slice(0, 2) : (user.email ? user.email.slice(0, 2) : 'U'))}
+                </div>
+                {/* Logout Button */}
+                <button
+                  onClick={handleLogout}
+                  title="Keluar / Logout"
+                  className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                >
+                  <LogOut className="h-4.5 w-4.5" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </header>
+
 
       {/* Main Container */}
       <div className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col lg:flex-row gap-8">
