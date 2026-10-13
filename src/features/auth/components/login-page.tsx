@@ -351,22 +351,11 @@ export const LoginPage: React.FC = () => {
             <div className="space-y-1.5 leading-relaxed">
               <h4 className="font-bold text-amber-950">💡 Tips untuk Pengguna Lama</h4>
               <p>
-                Jika sebelumnya Anda sudah memiliki resep di perangkat ini:
+                Data Mode Tamu terikat ke sesi anonim saat data dibuat. Jangan logout atau berganti browser sebelum mengekspor backup.
               </p>
-              <ol className="list-decimal pl-4 space-y-0.5">
-                <li>
-                  Masuk via <strong>Mode Tamu</strong> dulu.
-                </li>
-                <li>
-                  Buka menu <strong>Pengaturan & Backup</strong>, lalu klik <strong>Ekspor Berkas Backup</strong>.
-                </li>
-                <li>
-                  Logout, lalu masuk kembali dengan akun Google/Email Anda.
-                </li>
-                <li>
-                  Masuk menu Pengaturan lagi, dan <strong>Unggah Berkas Backup</strong> tersebut sekali saja.
-                </li>
-              </ol>
+              <p>
+                Jika data lama tidak muncul setelah login, gunakan backup terakhir atau hubungi pengelola untuk memindahkan data dari UID lama.
+              </p>
             </div>
           </div>
         </div>
