@@ -1,4 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app'
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check'
 import { 
   initializeFirestore, 
   persistentLocalCache, 
@@ -31,6 +32,21 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp()
+const appCheckSiteKey = import.meta.env.VITE_FIREBASE_APPCHECK_SITE_KEY
+
+if (appCheckSiteKey) {
+  // Localhost needs a registered debug token after App Check enforcement.
+  if (import.meta.env.DEV) {
+    (globalThis as Record<string, unknown>).FIREBASE_APPCHECK_DEBUG_TOKEN = true
+  }
+
+  initializeAppCheck(app, {
+    provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
+    isTokenAutoRefreshEnabled: true,
+  })
+} else {
+  console.warn('Firebase App Check is disabled: VITE_FIREBASE_APPCHECK_SITE_KEY is missing.')
+}
 
 // Initialize Firestore with persistent multi-tab local cache
 const db: Firestore = initializeFirestore(app, {
